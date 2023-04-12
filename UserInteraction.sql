@@ -34,22 +34,12 @@ END Customer_Actions;
 
 
 BEGIN
-  movieadmin.Customer_Actions();
+  Customer_Actions();
 END;
 /
 
 
---- select movie name,screen_id
-SELECT *FROM movieadmin.movie_schedule;
 
--- Get list of seats available
-select *from movieadmin.seats_available where screen_id = 1 and movie_name = 'Eiffel';
-
-
--- List of addons
-select *from movieadmin.addon; 
-
-COMMIT;
 
 
 -- Call the login procedure to retrieve the customer ID
@@ -58,18 +48,31 @@ BEGIN
 END;
 /
 
----- to checkout after selecting tickets
-DECLARE
-  v_checkout_price NUMBER;
+
+
 BEGIN
-  
-  movie_booking_pkg.checkout(
-                     p_movie_id => 7,
-                     p_show_id => 7,
-                     p_screen_id => 3,
-                     p_seat_list => '25A,25B',
-                     p_total_price => v_checkout_price);
-  
+    movie_booking_pkg.get_theater_names_by_location('Boston');
+END;
+/
+
+
+
+
+
+DECLARE
+  v_theater_name theatre.theatre_name%TYPE := 'AMC';
+BEGIN
+ movie_booking_pkg.get_movies_by_theater(v_theater_name);
+END;
+
+/
+
+
+
+
+
+BEGIN
+  movie_booking_pkg.check_available_seats('Kurup', '8/12/2021 08:00:00');
 END;
 /
 
@@ -77,8 +80,25 @@ END;
 DECLARE
   v_checkout_price NUMBER;
 BEGIN
+  
+  movie_booking_pkg.checkout(
+                     p_seat_list => '7C',
+                     p_total_price => v_checkout_price);
+  
+END;
+/
+
+
+
+---- to checkout after selecting tickets
+
+
+
+DECLARE
+  v_checkout_price NUMBER;
+BEGIN
   movie_booking_pkg.AddAddOnsToCheckout(
-                     p_add_on_id => '1,2,3',
+                     p_add_on_id => 'Fries,PopCorm,Candy',
                      p_quantity => '1,3,5',
                      checkoutPrice => v_checkout_price);
 END;
@@ -92,6 +112,7 @@ BEGIN
   movie_booking_pkg.processpayment(
                      p_name => 'PP',
                      p_address => '02120',
+                     p_card_number => '1234567891',
                      p_payment_id => p_payment_id);
 END;
 /
@@ -103,5 +124,5 @@ select *from customer_addon;
 select *from payment;
 
 
-
+select *from addon
 
