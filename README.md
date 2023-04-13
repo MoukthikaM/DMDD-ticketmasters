@@ -1,4 +1,3 @@
-# DMDD-ticketmasters
 DMDD final project
 1. Execute movie_admin.sql file first with ADMIN as the user.
    - This creates the movie admin user 

@@ -1,68 +1,3 @@
-set serveroutput on
--- Cleanup sequences 
-/*DECLARE
-  sql_statement VARCHAR2(1000);
-BEGIN
-  FOR s IN (SELECT sequence_name FROM user_sequences)
-  LOOP
-    sql_statement := 'DROP SEQUENCE ' || s.sequence_name;
-    EXECUTE IMMEDIATE sql_statement;
-  END LOOP;
-END;
-*/
----- Execute this script as movieadmmin---- 
-
-BEGIN
-   FOR cur_rec IN (SELECT object_name, object_type
-                   FROM user_objects
-                   WHERE object_type IN
-                             ('TABLE',
-                              'VIEW',
-                              'MATERIALIZED VIEW',
-                              'PACKAGE',
-                              'PROCEDURE',
-                              'FUNCTION',
-                              'SEQUENCE',
-                              'SYNONYM',
-                              'PACKAGE BODY'
-                             ))
-   LOOP
-      BEGIN
-         IF cur_rec.object_type = 'TABLE'
-         THEN
-            EXECUTE IMMEDIATE 'DROP '
-                              || cur_rec.object_type
-                              || ' "'
-                              || cur_rec.object_name
-                              || '" CASCADE CONSTRAINTS';
-         ELSE
-            EXECUTE IMMEDIATE 'DROP '
-                              || cur_rec.object_type
-                              || ' "'
-                              || cur_rec.object_name
-                              || '"';
-         END IF;
-      EXCEPTION
-         WHEN OTHERS
-         THEN
-            DBMS_OUTPUT.put_line ('FAILED: DROP '
-                                  || cur_rec.object_type
-                                  || ' "'
-                                  || cur_rec.object_name
-                                  || '"'
-                                 );
-      END;
-   END LOOP;
-   FOR cur_rec IN (SELECT * 
-                   FROM all_synonyms 
-                   WHERE table_owner IN (SELECT USER FROM dual))
-   LOOP
-      BEGIN
-         EXECUTE IMMEDIATE 'DROP PUBLIC SYNONYM ' || cur_rec.synonym_name;
-      END;
-   END LOOP;
-END;
-/
 
 
 --CREATE TABLES AS PER DATA MODEL
@@ -74,7 +9,7 @@ CREATE SEQUENCE movie_id_seq
 
 create table movie(
     movie_id NUMBER DEFAULT movie_id_seq.NEXTVAL PRIMARY KEY,
-    movie_name varchar(1000),
+    movie_name varchar(1000) unique,
     movie_description varchar(1000),
     movie_duration number(10),
     movie_language varchar(100),
@@ -91,11 +26,11 @@ CREATE SEQUENCE customer_id_seq
 
 create table customer (
     customer_id NUMBER DEFAULT customer_id_seq.NEXTVAL PRIMARY KEY,
-    customer_username varchar(100),
+    customer_username varchar(100) unique,
     customer_password varchar(100), 
     customer_name varchar(100), 
-    customer_phone_number varchar(100), 
-    customer_email varchar(100), 
+    customer_phone_number varchar(100) CHECK (LENGTH(customer_phone_number) = 10), 
+    customer_email varchar(100) CHECK (REGEXP_LIKE(customer_email, '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')), 
     customer_dob date
 )
 /
@@ -115,13 +50,12 @@ create table theatre_location (
 /
 
 CREATE SEQUENCE theatre_id_seq
-  START WITH 1
-  INCREMENT BY 1
-  MAXVALUE 999999999999999999999999999;
+START WITH 1
+INCREMENT BY 1;
 
 create table theatre (
     theatre_id number(10) DEFAULT theatre_id_seq.NEXTVAL PRIMARY KEY,
-    theatre_name varchar(100),
+    theatre_name varchar(100) ,
     location_id number(10),
     CONSTRAINT fk_location_id FOREIGN KEY (location_id) REFERENCES theatre_location(location_id)
 )
@@ -141,18 +75,31 @@ create table movie_screen (
 )
 
 /
-
+/*
 CREATE SEQUENCE seat_id_seq
   START WITH 1
   INCREMENT BY 1
   MAXVALUE 999999999999999999999999999;
 
+/*
 create table seat (
     seat_id number(4) DEFAULT seat_id_seq.NEXTVAL PRIMARY KEY,
     screen_id number(4),
     seat_type varchar(10),
     seat_number number(4),
+    seat_row varchar(2),
+    seat_status varchar(2),
     CONSTRAINT fk_screen_id FOREIGN KEY (screen_id) REFERENCES movie_screen(screen_id)
+)
+*/
+
+CREATE TABLE seat (
+  seat_number VARCHAR(6),
+  seat_status VARCHAR(2),
+  seat_type varchar(10),
+  screen_id NUMBER(4),
+    CONSTRAINT pk_seat PRIMARY KEY (seat_number, screen_id),
+  CONSTRAINT fk_screen_id FOREIGN KEY (screen_id) REFERENCES movie_screen(screen_id)
 )
 /
 
@@ -168,6 +115,7 @@ create table scheduled_show (
     movie_id number(4),
     start_date_time VARCHAR(100),
     end_date_time VARCHAR(100),
+    price number(4),
     CONSTRAINT fk_show_movie_id FOREIGN KEY (movie_id) REFERENCES movie(movie_id),
     CONSTRAINT fk_show_screen_id FOREIGN KEY (screen_id) REFERENCES movie_screen(screen_id)
 )
@@ -181,13 +129,28 @@ NOCYCLE;
 
 create table payment (
     payment_id number(4) DEFAULT payment_id_seq.NEXTVAL PRIMARY KEY,
-    customer_id number(4),
     name_on_card varchar(50),
     address varchar(100),
     payment_amount varchar(10),
-    CONSTRAINT fk_payment_customer_id FOREIGN KEY (customer_id) REFERENCES customer(customer_id)
+    payment_status varchar(10),
+    card_number varchar(12)
 )
 /
+
+
+CREATE SEQUENCE addon_id_seq
+START WITH 1
+INCREMENT BY 1
+NOCACHE
+NOCYCLE;
+
+create table addon (
+    addon_id number(4) DEFAULT addon_id_seq.NEXTVAL PRIMARY KEY,
+    addon_name varchar(50),
+    price number(4)
+)
+/
+
 
 CREATE SEQUENCE ticket_id_seq
 START WITH 1
@@ -195,23 +158,38 @@ INCREMENT BY 1
 NOCACHE
 NOCYCLE;
 
+
+
 create table ticket (
     ticket_id number(4) DEFAULT ticket_id_seq.NEXTVAL PRIMARY KEY,
     customer_id number(4),
     show_id number(4),
-    seat_id number(4),
+    screen_id number(4),
+    seat_list varchar(50),
     payment_id number(4),
     CONSTRAINT fk_ticket_customer_id FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
     CONSTRAINT fk_ticket_show_id FOREIGN KEY (show_id) REFERENCES scheduled_show(show_id),
-    CONSTRAINT fk_ticket_seat_id FOREIGN KEY (seat_id) REFERENCES seat(seat_id),
-    CONSTRAINT fk_ticket_payment_id FOREIGN KEY (payment_id) REFERENCES payment(payment_id)
+    CONSTRAINT fk_ticket_payment_id FOREIGN KEY (payment_id) REFERENCES payment(payment_id),
+    CONSTRAINT fk_ticket_screen_id FOREIGN KEY (screen_id) REFERENCES movie_screen(screen_id)
 )
 /
-/*
-ALTER TABLE payment
-ADD CONSTRAINT fk_payment_ticket_id
-FOREIGN KEY (ticket_id) REFERENCES ticket(ticket_id);
-*/
+
+
+CREATE TABLE customer_addon (
+  addon_id NUMBER(4) ,
+  addon_quantity NUMBER,
+  ticket_id NUMBER REFERENCES ticket(ticket_id),
+  CONSTRAINT fk_customer_add_id FOREIGN KEY (addon_id) REFERENCES addon(addon_id)
+);
+/
+
+select *from customer_addon;
+
+SELECT table_name FROM user_tables;
+
+
+--------------- Creation of tables completed ----------------
+
 
 INSERT INTO movie (movie_name, movie_description, movie_duration, movie_language, genre, parental_rating)
 SELECT 'Frankenstein','An obsessed scientist assembles a living being from parts of exhumed corpses.',70,'English/Latin', 'Horror Thriller', 'PG13' FROM dual UNION ALL
@@ -289,6 +267,8 @@ insert into theatre (theatre_name, location_id)
   
 select *from theatre;
   
+
+
 insert into movie_screen(seat_count, theatre_id)
    select 200,1 from dual union all
    select 100,1 from dual union all
@@ -312,168 +292,54 @@ insert into movie_screen(seat_count, theatre_id)
 
 select * from movie_screen;
 
-insert into seat(screen_id, seat_type, seat_number)
-   select 1,'Balcony',20 from dual union all
-   select 1,'Front',5 from dual union all
-   select 1,'Upper',7 from dual union all
-   select 1,'Centre',10 from dual union all
-   select 1,'Centre',10 from dual union all
-   select 2,'Upper',10 from dual union all
-   select 2,'Upper',10 from dual union all
-   select 2,'Front',7 from dual union all
-   select 2,'Upper',10 from dual union all
-   select 2,'Upper',10 from dual union all
-   select 3,'Balcony',25 from dual union all
-   select 3,'Balcony',25 from dual union all
-   select 3,'Balcony',25 from dual union all
-   select 3,'Balcony',25 from dual union all
-   select 3,'Balcony',25 from dual union all
-   select 4,'Centre',5 from dual union all
-   select 4,'Centre',5 from dual union all
-   select 4,'Centre',3 from dual union all
-   select 4,'Centre',3 from dual union all
-   select 4,'Centre',3 from dual;
+insert into seat(screen_id, seat_type, seat_number,seat_status)
+   select 1,'Balcony','20A','Y' from dual union all
+   select 1,'Front','5B','Y' from dual union all
+   select 1,'Upper','7C','Y' from dual union all
+   select 1,'Centre','10D','Y' from dual union all
+   select 1,'Centre','10E','Y' from dual union all
+   select 2,'Upper','10A','Y' from dual union all
+   select 2,'Upper','10B','Y' from dual union all
+   select 3,'Balcony','25F','Y' from dual union all
+   select 3,'Balcony','25A','Y' from dual union all
+   select 3,'Balcony','25B','Y' from dual union all
+   select 3,'Balcony','25C','Y' from dual union all
+   select 3,'Balcony','25D','Y' from dual union all
+   select 4,'Centre','5A','Y' from dual union all
+   select 4,'Centre','3C','Y' from dual union all
+   select 4,'Centre','3D','Y' from dual union all
+   select 4,'Centre','3E','Y' from dual;
    
 select * from seat;
    
-insert into scheduled_show(screen_id, movie_id, start_date_time, end_date_time)  
-  select 1,11,'8/12/2021 08:00:00','8/12/2021 11:30:00' from dual union all
-  select 1,12,'9/12/2021 10:30:00','9/12/2021 01:30:00' from dual union all
-  select 2,2,'11/1/2021 11:00:00','11/1/2021 02:30:00' from dual union all
-  select 2,3,'11/1/2021 17:00:00','11/1/2021 19:30:00' from dual union all
-  select 2,4,'11/1/2021 20:00:00','11/1/2021 22:30:00' from dual union all
-  select 2,10,'5/2/2021 10:00:00','5/2/2021 00:30:00' from dual union all
-  select 3,7,'6/2/2021 08:00:00','6/2/2021 11:30:00' from dual;
+insert into scheduled_show(screen_id, movie_id, start_date_time, end_date_time,price)  
+  select 1,11,'8/12/2021 08:00:00','8/12/2021 11:30:00',120 from dual union all
+  select 1,12,'9/12/2021 10:30:00','9/12/2021 01:30:00',132 from dual union all
+  select 2,2,'11/1/2021 11:00:00','11/1/2021 02:30:00',40 from dual union all
+  select 2,3,'11/1/2021 17:00:00','11/1/2021 19:30:00',50 from dual union all
+  select 2,4,'11/1/2021 20:00:00','11/1/2021 22:30:00',40 from dual union all
+  select 2,10,'5/2/2021 10:00:00','5/2/2021 00:30:00',120 from dual union all
+  select 3,7,'6/2/2021 08:00:00','6/2/2021 11:30:00',150 from dual;
 
 select * from scheduled_show;
 
-insert into payment(customer_id, name_on_card ,address, payment_amount)  
-  select 2, 'Samuel Jackson', 'Boston, MA', 75   from dual union all
-  select 3, 'Gary Neville', 'Hoboken, NJ', 125  from dual union all
-  select 5, 'Michael Senger', 'Walhtam, MA', 50 from dual union all
-  select 7, 'Mohammed Elmir', 'Providence, RI', 80 from dual union all
-  select 6, 'Gray Nicols', 'Santa Cruz, CA', 150 from dual union all
-  select 8, 'Jason Holden', 'St. Louis, MO', 25 from dual union all
-  select 10, 'Anna Zelma', 'Brooklyn, NY', 175 from dual;
+/*insert into payment(name_on_card ,address, payment_amount,card_number)  
+  select 'Samuel Jackson', 'Boston, MA', 75 ,'1238765498'  from dual union all
+  select 'Gary Neville', 'Hoboken, NJ', 125 , '1238765498' from dual union all
+  select 'Michael Senger', 'Walhtam, MA', 50, '1238765498' from dual union all
+  select 'Mohammed Elmir', 'Providence, RI', 80, '1238765498'from dual union all
+  select 'Gray Nicols', 'Santa Cruz, CA',150,'1238765498'  from dual union all
+  select 'Jason Holden', 'St. Louis, MO',25,'1238765498'  from dual union all
+  select 'Anna Zelma', 'Brooklyn, NY',175,'1238765498'  from dual;*/
   
 select * from payment;
 
-insert into ticket(customer_id, show_id, seat_id, payment_id)  
-  select 9, 1, 19, 2 from dual union all
-  select 7, 2, 3, 3 from dual union all
-  select 5, 2, 4, 5 from dual union all
-  select 1, 3, 12, 7 from dual union all
-  select 8, 7, 11, 1 from dual union all
-  select 10, 6, 10, 4 from dual union all
-  select 6, 5, 7, 6 from dual;
-  
-select * from ticket;
 
+INSERT INTO addon(addon_name, price)
+SELECT 'PopCorm', 2.5 FROM dual UNION ALL
+SELECT 'Soda', 3.0 FROM dual UNION ALL
+SELECT 'Fries', 2.0 FROM dual UNION ALL
+SELECT 'Candy', 2.5 FROM dual;
 
----------------------------------------Customer_User Creation and Role assignment-----------------------------
-DECLARE 
-    nCount number;
-BEGIN
-    SELECT count(*) INTO nCount FROM ALL_USERS WHERE USERNAME = 'CUSTUSER';
-    IF nCount > 0 THEN 
-        dbms_output.put_line('User custuser already exists');
-    ELSE
-        EXECUTE IMMEDIATE 'create user CUSTUSER identified by setuAer26328';
-        EXECUTE IMMEDIATE 'grant create session, connect to CUSTUSER';
-        EXECUTE IMMEDIATE 'grant CUSTOMER_USER to CUSTUSER';
-        EXECUTE IMMEDIATE 'grant read any table to CUSTUSER';
-        dbms_output.put_line('User custuser created successfully');
-    END IF;
-EXCEPTION 
-    WHEN OTHERS THEN 
-        dbms_output.put_line(dbms_utility.format_error_backtrace);
-        dbms_output.put_line(SQLERRM);
-        ROLLBACK;
-        RAISE;
-END;
-/ 
-
-
-
-
--------------------------------------------User Guest Creation and Role assignment-----------------------------
-DECLARE 
-    nCount number;
-BEGIN
-    SELECT count(*) INTO nCount FROM ALL_USERS WHERE USERNAME = 'GUSER';
-    IF nCount > 0 THEN 
-        dbms_output.put_line('User guest already exists');
-    ELSE
-        EXECUTE IMMEDIATE 'create user GUSER identified by setuAer26328';
-        EXECUTE IMMEDIATE 'grant create session, connect to GUSER';
-        EXECUTE IMMEDIATE 'GRANT GUEST to GUSER';
-        dbms_output.put_line('User guest created successfully');
-    END IF;
-EXCEPTION 
-    WHEN OTHERS THEN 
-        dbms_output.put_line(dbms_utility.format_error_backtrace);
-        dbms_output.put_line(SQLERRM);
-        ROLLBACK;
-        RAISE;
-END;
-/ 
-
-------- Create views --------
-
---- Movie Schedule -----
-
-CREATE VIEW movie_schedule AS
-SELECT m.movie_name,m.Genre,m.movie_language,ss.show_id, ss.start_date_time, ss.end_date_time, sc.screen_id
-FROM scheduled_show ss
-INNER JOIN movie_screen sc ON ss.screen_id = sc.screen_id
-INNER JOIN movie m ON ss.movie_id = m.movie_id;
-
-
--- Theatre locations ---
-
-CREATE VIEW theatre_locations_view AS
-SELECT t.theatre_id, t.theatre_name, l.theatre_city, l.theatre_state
-FROM theatre t
-INNER JOIN theatre_location l ON t.location_id = l.location_id;
-
-
-
----- Tickets_history ---- 
-
-CREATE VIEW tickets_history AS
-SELECT t.ticket_id, t.customer_id,m.movie_name, ss.start_date_time, ss.end_date_time, sc.screen_id, s.seat_id, s.seat_number, p.payment_amount
-FROM ticket t
-INNER JOIN scheduled_show ss ON t.show_id = ss.show_id
-INNER JOIN movie_screen sc ON ss.screen_id = sc.screen_id
-INNER JOIN seat s ON t.seat_id = s.seat_id
-INNER JOIN movie m ON ss.movie_id = m.movie_id
-INNER JOIN payment p ON t.customer_id = p.customer_id;
-
-
-
-    
------------------ 
-
-COMMIT;
-
-
-------------- Run select statement for views using customer user -----------
-
-/*
-BEGIN
-execute immediate 'alter session set current_schema=CUSTUSER';
-END;
-/
-
-
-
-select sys_context( 'userenv', 'current_schema' ) from dual;
-/
-
-
-SELECT * FROM MOVIEADMIN.movie_schedule;
-SELECT * FROM MOVIEADMIN.theatre_locations_view where theatre_city = 'Albany';
-select *from MOVIEADMIN.tickets_history where customer_id = 7 ;
-
-*/
+select * from addon;
 
